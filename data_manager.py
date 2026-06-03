@@ -12,12 +12,17 @@ class SensorNetworkInstance:
         with open(filepath, 'r') as f:
             lines = [line.strip() for line in f if line.strip()]
         
-        num_zones, num_sensors = map(int, lines[0].split())
-        lifetimes = list(map(float, lines[1].split()))
+        num_sensors = int(lines[0])
+        num_zones = int(lines[1])
+        lifetimes = list(map(float, lines[2].split()))
         
-        coverage_matrix = []
+        coverage_matrix = [[0 for _ in range(num_zones)] for _ in range(num_sensors)]
         for i in range(num_sensors):
-            coverage_matrix.append(list(map(int, lines[2+i].split())))
+            if 3 + i < len(lines):
+                covered_zones = list(map(int, lines[3+i].split()))
+                for zone in covered_zones:
+                    # Les zones sont indexées à partir de 1 dans le fichier
+                    coverage_matrix[i][zone - 1] = 1
             
         return cls(num_zones, num_sensors, lifetimes, coverage_matrix)
 
