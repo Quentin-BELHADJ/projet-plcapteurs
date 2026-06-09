@@ -183,6 +183,7 @@ class RandomPruningGreedy:
         attempts = 0
         max_attempts = num_configs * max_attempts_factor
         global_stagnation = 0
+        dynamic_stagnation_limit = instance.num_sensors * 50
         last_len = 0
 
         while len(configs) < num_configs and attempts < max_attempts:
@@ -206,7 +207,7 @@ class RandomPruningGreedy:
                 last_len = len(configs)
             else:
                 global_stagnation += 1
-                if global_stagnation > 5000:
+                if global_stagnation > dynamic_stagnation_limit:
                     break
 
         return list(configs)
@@ -305,6 +306,7 @@ class DualGuidedGenerator:
         dual_prices = {}
 
         per_iter = max(1, (num_configs - len(configs)) // self.iterations)
+        dynamic_stagnation_limit = instance.num_sensors * 50
 
         for iteration in range(self.iterations):
             if len(configs) >= num_configs:
@@ -336,7 +338,7 @@ class DualGuidedGenerator:
                     last_len = len(configs)
                 else:
                     global_stagnation += 1
-                    if global_stagnation > 5000:
+                    if global_stagnation > dynamic_stagnation_limit:
                         break
 
         # Compléter si besoin avec du random pur
@@ -562,6 +564,7 @@ def _bootstrap(instance, configs_set, target, max_attempts_factor=100):
     attempts = 0
     max_attempts = needed * max_attempts_factor
     global_stagnation = 0
+    dynamic_stagnation_limit = instance.num_sensors * 50
     last_len = len(configs_set)
 
     while len(configs_set) < target and attempts < max_attempts:
@@ -589,7 +592,7 @@ def _bootstrap(instance, configs_set, target, max_attempts_factor=100):
             last_len = len(configs_set)
         else:
             global_stagnation += 1
-            if global_stagnation > 5000:
+            if global_stagnation > dynamic_stagnation_limit:
                 break
 
 
@@ -671,6 +674,7 @@ class SimulatedAnnealingGenerator:
         attempts = 0
         max_attempts = num_configs * 50
         global_stagnation = 0
+        dynamic_stagnation_limit = max(5, instance.num_sensors // 2)
         last_len = len(configs)
         
         while len(configs) < num_configs and attempts < max_attempts:
@@ -720,7 +724,7 @@ class SimulatedAnnealingGenerator:
                 last_len = len(configs)
             else:
                 global_stagnation += 1
-                if global_stagnation > 5000:
+                if global_stagnation > dynamic_stagnation_limit:
                     break
 
         # Fallback si on manque de configs
@@ -752,6 +756,7 @@ class RealTimeGreedyGenerator:
         attempts = 0
         max_attempts = num_configs * 50
         global_stagnation = 0
+        dynamic_stagnation_limit = instance.num_sensors * 50
         last_len = 0
         
         while len(configs) < num_configs and attempts < max_attempts:
@@ -801,7 +806,7 @@ class RealTimeGreedyGenerator:
                 last_len = len(configs)
             else:
                 global_stagnation += 1
-                if global_stagnation > 5000:
+                if global_stagnation > dynamic_stagnation_limit:
                     break
 
         # Fallback si on n'a pas atteint le quota
@@ -846,6 +851,7 @@ class AdaptiveBitmaskGreedyGenerator:
         max_attempts = num_configs * 50
         stagnation = 0
         global_stagnation = 0
+        dynamic_stagnation_limit = instance.num_sensors * 50
         last_config_count = 0
         temperature = 1.0
         
@@ -916,8 +922,8 @@ class AdaptiveBitmaskGreedyGenerator:
                 stagnation += 1
                 global_stagnation += 1
                 
-                # Auto-Stop : Si on ne trouve plus de NOUVELLES configs après 5000 essais
-                if global_stagnation > 5000:
+                # Auto-Stop : Adaptatif selon l'instance
+                if global_stagnation > dynamic_stagnation_limit:
                     break
                     
                 if stagnation > self.stagnation_limit:
