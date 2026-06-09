@@ -229,3 +229,52 @@ def display_solution(instance, configurations, objective_value, variables):
 
         print(f"  s{i+1:<8} {active_time:>13.4f} {instance.lifetimes[i]:>13.1f} {remaining:>13.4f}   {status}")
     print()
+
+def solve_with_duals(instance, configurations):
+    """Résout le LP et retourne les prix duaux par capteur.
+    
+    Utilisé par DualGuidedGenerator et ColumnGeneration pour identifier
+    les capteurs goulots d'étranglement (contrainte binding ↔ dual > 0).
+
+    Returns:
+        (obj, variables, sensor_duals)
+        sensor_duals : dict { sensor_idx: dual_price }
+    """
+    n_configs = len(configurations)
+    if n_configs == 0:
+        return 0.0, {}, {}
+
+    c = [-1.0] * n_configs
+    A_ub, b_ub = [], []
+    active_sensors = []  # capteurs qui apparaissent dans au moins une config
+
+    for i in range(instance.num_sensors):
+        row = [1.0 if i in config else 0.0 for config in configurations]
+        if any(r > 0 for r in row):
+            A_ub.append(row)
+            b_ub.append(instance.lifetimes[i])
+            active_sensors.append(i)
+
+    if not A_ub:
+        return 0.0, {}, {}
+
+    result = linprog(c, A_ub=np.array(A_ub), b_ub=np.array(b_ub),
+                     bounds=[(0, None)] * n_configs, method='highs',
+                     options={'disp': False})
+
+    if not result.success:
+        return 0.0, {}, {}
+
+    obj = -result.fun
+    variables = {f"t{j}": result.x[j] for j in range(n_configs) if result.x[j] > 1e-10}
+
+    # Prix duaux : scipy/HiGHS les retourne dans ineqlin.marginals
+    # Convention : marginal négatif pour une contrainte <= → on inverse
+    sensor_duals = {}
+    if hasattr(result, 'ineqlin') and result.ineqlin is not None:
+        marginals = result.ineqlin.marginals
+        for idx, i in enumerate(active_sensors):
+            if idx < len(marginals):
+                sensor_duals[i] = float(-marginals[idx])  # positif = contrainte binding
+
+    return obj, variables, sensor_duals
