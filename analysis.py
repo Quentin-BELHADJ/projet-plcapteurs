@@ -31,7 +31,7 @@ def run_all_instances():
         ("maxi_test_1.txt",     "Maxi (1000 capteurs, 500 zones)"),
     ]
 
-    num_configs = 200  # Nombre de configs à générer par défaut
+    num_configs = 1000  # Nombre de configs à générer par défaut
 
     print("\n" + "=" * 90)
     print("  PARTIE 4 — Résolution des instances de test")
@@ -90,7 +90,7 @@ def run_all_instances():
 
 def analyze_num_configs(instance, instance_name="instance"):
     """Analyse l'influence du NOMBRE de configurations sur la durée de vie."""
-    config_counts = [5, 10, 25, 50, 100, 200, 500]
+    config_counts = [5, 10, 25, 50, 100, 200, 500, 1000, 5000]
     lifetimes_random = []
     lifetimes_greedy = []
     actual_counts_random = []
@@ -174,11 +174,11 @@ def run_analysis():
     print("  PARTIE 5 — Analyse de l'influence des configurations")
     print("=" * 90)
 
-    # Utiliser moyen_test_3 pour l'analyse (10 capteurs, 10 zones — rapide)
-    analysis_file = "moyen_test_3.txt"
+    # Utiliser gros_test_1 pour l'analyse (10 capteurs, 10 zones — rapide)
+    analysis_file = "gros_test_1.txt"
     if os.path.exists(analysis_file):
         instance = SensorNetworkInstance.from_file(analysis_file)
-        instance_name = "moyen_test_3"
+        instance_name = "gros_test_1"
     else:
         # Fallback : générer une instance aléatoire
         instance = SensorNetworkInstance.generate_random(15, 30, min_lifetime=10, max_lifetime=100, coverage_prob=0.2)
