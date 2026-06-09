@@ -1,0 +1,2 @@
+Date,Heure,Instance,Algorithme,Nb_Solutions_Explorees,Score_Objectif,Temps_Execution_s
+2026-06-09,16:22:51,gros_test_1.txt,adaptive_bitmask,500000,3095.5513102898076,1107.14

@@ -29,6 +29,7 @@ from heuristic_advanced import (
     generate_with_column_generation,
     generate_with_simulated_annealing,
     generate_with_real_time_greedy,
+    generate_with_adaptive_bitmask,
 )
 from lp_solver import solve
 
@@ -76,6 +77,8 @@ def run_method(instance, method_name, num_configs):
         configs = generate_with_simulated_annealing(instance, num_configs)
     elif method_name == "real_time_greedy":
         configs = generate_with_real_time_greedy(instance, num_configs)
+    elif method_name == "adaptive_bitmask":
+        configs = generate_with_adaptive_bitmask(instance, num_configs)
 
     gen_time = time.time() - t0
 
@@ -97,9 +100,11 @@ ALL_METHODS = [
     ("random_greedy",     "Random Greedy"),
     ("greedy_hybrid",     "Greedy Hybride"),
     ("random_pruning",    "Random Pruning"),
+    ("dual_guided",       "Dual Guided"),
     ("column_generation", "Column Generation"),
     ("simulated_annealing", "Simulated Annealing"),
     ("real_time_greedy",  "Real-Time Greedy"),
+    ("adaptive_bitmask",  "Adaptive Bitmask"),
 ]
 
 VALID_IDS = {m[0] for m in ALL_METHODS}

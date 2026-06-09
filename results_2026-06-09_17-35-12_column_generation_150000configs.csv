@@ -1,0 +1,6 @@
+Date,Heure,Instance,Algorithme,Nb_Solutions_Explorees,Score_Objectif,Temps_Execution_s
+2026-06-09,17:35:12,fichier-exemple.txt,column_generation,4,8.5,0.04
+2026-06-09,17:35:35,moyen_test_2.txt,column_generation,238,104.0,22.47
+2026-06-09,17:35:35,moyen_test_3.txt,column_generation,19,395.0,0.1
+2026-06-09,17:40:03,gros_test_1.txt,column_generation,150000,3076.1924761134924,268.64
+2026-06-09,17:58:23,maxi_test_1.txt,column_generation,150000,22257.463965885243,1099.67

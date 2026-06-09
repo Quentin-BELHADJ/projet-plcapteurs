@@ -1,0 +1,6 @@
+Date,Heure,Instance,Algorithme,Nb_Solutions_Explorees,Score_Objectif,Temps_Execution_s
+2026-06-09,15:32:33,fichier-exemple.txt,adaptive_bitmask,8,8.5,51.41
+2026-06-09,15:35:26,moyen_test_2.txt,adaptive_bitmask,435,104.00000000000001,172.9
+2026-06-09,15:37:25,moyen_test_3.txt,adaptive_bitmask,38,395.0,119.28
+2026-06-09,15:37:40,gros_test_1.txt,adaptive_bitmask,50000,3093.259511178285,14.8
+2026-06-09,15:42:51,maxi_test_1.txt,adaptive_bitmask,50000,22811.599363983994,311.22

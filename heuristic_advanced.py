@@ -182,6 +182,8 @@ class RandomPruningGreedy:
         configs = set()
         attempts = 0
         max_attempts = num_configs * max_attempts_factor
+        global_stagnation = 0
+        last_len = 0
 
         while len(configs) < num_configs and attempts < max_attempts:
             attempts += 1
@@ -198,6 +200,14 @@ class RandomPruningGreedy:
 
             if _covers_all(instance, elementary):
                 configs.add(elementary)
+
+            if len(configs) > last_len:
+                global_stagnation = 0
+                last_len = len(configs)
+            else:
+                global_stagnation += 1
+                if global_stagnation > 5000:
+                    break
 
         return list(configs)
 
@@ -308,7 +318,8 @@ class DualGuidedGenerator:
             new_in_iter = 0
             attempts = 0
             max_attempts = per_iter * 100
-
+            global_stagnation = 0
+            last_len = len(configs)
             while new_in_iter < per_iter and attempts < max_attempts:
                 attempts += 1
                 raw = self._build_one(instance, dual_prices)
@@ -319,6 +330,14 @@ class DualGuidedGenerator:
                     configs.add(elementary)
                     configs_list.append(tuple(sorted(elementary)))
                     new_in_iter += 1
+                    
+                if len(configs) > last_len:
+                    global_stagnation = 0
+                    last_len = len(configs)
+                else:
+                    global_stagnation += 1
+                    if global_stagnation > 5000:
+                        break
 
         # Compléter si besoin avec du random pur
         _bootstrap(instance, configs, target=num_configs)
@@ -478,6 +497,8 @@ class ColumnGeneration:
 
         history = []  # (iteration, obj, nb_configs)
         obj = 0.0
+        global_stagnation = 0
+        last_len = len(configs)
 
         for iteration in range(self.max_iter):
             if len(configs) >= num_configs:
@@ -512,6 +533,14 @@ class ColumnGeneration:
             if elementary not in configs:
                 configs.add(elementary)
                 configs_list.append(tuple(sorted(elementary)))
+                
+            if len(configs) > last_len:
+                global_stagnation = 0
+                last_len = len(configs)
+            else:
+                global_stagnation += 1
+                if global_stagnation > 5000:
+                    break
 
         # Compléter avec du random si demandé et quota non atteint
         if self.fallback_random and len(configs) < num_configs:
@@ -532,6 +561,8 @@ def _bootstrap(instance, configs_set, target, max_attempts_factor=100):
 
     attempts = 0
     max_attempts = needed * max_attempts_factor
+    global_stagnation = 0
+    last_len = len(configs_set)
 
     while len(configs_set) < target and attempts < max_attempts:
         attempts += 1
@@ -552,6 +583,14 @@ def _bootstrap(instance, configs_set, target, max_attempts_factor=100):
             continue
 
         configs_set.add(_reduce_to_elementary(instance, set(current), shuffle=True))
+        
+        if len(configs_set) > last_len:
+            global_stagnation = 0
+            last_len = len(configs_set)
+        else:
+            global_stagnation += 1
+            if global_stagnation > 5000:
+                break
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -631,6 +670,8 @@ class SimulatedAnnealingGenerator:
                 
         attempts = 0
         max_attempts = num_configs * 50
+        global_stagnation = 0
+        last_len = len(configs)
         
         while len(configs) < num_configs and attempts < max_attempts:
             attempts += 1
@@ -669,9 +710,18 @@ class SimulatedAnnealingGenerator:
                 temp *= self.cooling_rate
                 
             if best_config not in configs:
-                configs.add(best_config)
+                # Mettre à jour les stats d'utilisation
                 for s in best_config:
                     usage_counts[s] = usage_counts.get(s, 0) + 1
+                configs.add(tuple(sorted(best_config)))
+            
+            if len(configs) > last_len:
+                global_stagnation = 0
+                last_len = len(configs)
+            else:
+                global_stagnation += 1
+                if global_stagnation > 5000:
+                    break
 
         # Fallback si on manque de configs
         _bootstrap(instance, configs, target=num_configs)
@@ -701,6 +751,8 @@ class RealTimeGreedyGenerator:
         
         attempts = 0
         max_attempts = num_configs * 50
+        global_stagnation = 0
+        last_len = 0
         
         while len(configs) < num_configs and attempts < max_attempts:
             attempts += 1
@@ -743,12 +795,139 @@ class RealTimeGreedyGenerator:
                 residual_energy[s] -= self.step_time
                 
             configs.add(elementary)
+            
+            if len(configs) > last_len:
+                global_stagnation = 0
+                last_len = len(configs)
+            else:
+                global_stagnation += 1
+                if global_stagnation > 5000:
+                    break
 
         # Fallback si on n'a pas atteint le quota
         if len(configs) < num_configs:
             _bootstrap(instance, configs, target=num_configs)
             
         return [tuple(sorted(c)) for c in configs]
+
+# ═══════════════════════════════════════════════════════════════════
+#  6. AdaptiveBitmaskGreedyGenerator (Ultime G.O.A.T)
+# ═══════════════════════════════════════════════════════════════════
+
+class AdaptiveBitmaskGreedyGenerator:
+    """Glouton Adaptatif avec Masques de Bits.
+    
+    Explose les performances en utilisant des opérations binaires (Bitmasks)
+    et fait varier dynamiquement les probabilités (Température) pour ne
+    jamais stagner.
+    """
+    
+    def __init__(self, stagnation_limit=50):
+        self.stagnation_limit = stagnation_limit
+
+    def generate(self, instance, num_configs):
+        configs = set()
+        
+        num_sensors = instance.num_sensors
+        num_zones = instance.num_zones
+        full_cover_mask = (1 << num_zones) - 1
+        
+        # Prépare les masques de bits pour chaque capteur
+        sensor_masks = []
+        for s in range(num_sensors):
+            mask = 0
+            for z in instance.get_zones_covered_by(s):
+                mask |= (1 << z)
+            sensor_masks.append(mask)
+            
+        residual_energy = list(instance.lifetimes)
+        
+        attempts = 0
+        max_attempts = num_configs * 50
+        stagnation = 0
+        global_stagnation = 0
+        last_config_count = 0
+        temperature = 1.0
+        
+        while len(configs) < num_configs and attempts < max_attempts:
+            attempts += 1
+            
+            # Filtre des capteurs vivants
+            available = [s for s in range(num_sensors) if residual_energy[s] > 0]
+            
+            # Si plus assez de capteurs vivants, on reset + on augmente le chaos
+            if not available:
+                residual_energy = list(instance.lifetimes)
+                available = list(range(num_sensors))
+                temperature *= 1.5
+                
+            # Calcul du score avec bruit proportionnel à la température
+            scores = [(s, residual_energy[s] * random.uniform(1.0, 1.0 + temperature)) for s in available]
+            scores.sort(key=lambda x: x[1], reverse=True)
+            sorted_sensors = [s for s, _ in scores]
+            
+            # Glouton ultra-rapide par Bitmask
+            current_mask = 0
+            current_config = []
+            
+            for s in sorted_sensors:
+                s_mask = sensor_masks[s]
+                # Si le capteur apporte de nouvelles zones
+                if (current_mask | s_mask) > current_mask:
+                    current_mask |= s_mask
+                    current_config.append(s)
+                if current_mask == full_cover_mask:
+                    break
+                    
+            if current_mask != full_cover_mask:
+                # Reset des batteries pour éviter le blocage
+                residual_energy = list(instance.lifetimes)
+                temperature *= 1.5
+                continue
+                
+            # Pruning élémentaire par Bitmask (ultra-rapide)
+            elementary = set(current_config)
+            sensors_to_check = list(elementary)
+            random.shuffle(sensors_to_check)
+            
+            for s in sensors_to_check:
+                mask_without_s = 0
+                for other_s in elementary:
+                    if other_s != s:
+                        mask_without_s |= sensor_masks[other_s]
+                if mask_without_s == full_cover_mask:
+                    elementary.remove(s)
+            
+            config_tuple = tuple(sorted(elementary))
+            
+            # Déduire l'énergie
+            for s in elementary:
+                residual_energy[s] -= 1.0
+                
+            configs.add(config_tuple)
+            
+            # Gestion de la stagnation et variation des variables
+            if len(configs) > last_config_count:
+                stagnation = 0
+                global_stagnation = 0
+                last_config_count = len(configs)
+                temperature = max(1.0, temperature * 0.99) # Refroidissement
+            else:
+                stagnation += 1
+                global_stagnation += 1
+                
+                # Auto-Stop : Si on ne trouve plus de NOUVELLES configs après 5000 essais
+                if global_stagnation > 5000:
+                    break
+                    
+                if stagnation > self.stagnation_limit:
+                    temperature *= 2.0 # Forte variation ("faire varier les variables")
+                    stagnation = 0
+        
+        if len(configs) < num_configs:
+            _bootstrap(instance, configs, target=num_configs)
+            
+        return list(configs)
 
 # ═══════════════════════════════════════════════════════════════════
 #  Interface publique
@@ -795,4 +974,9 @@ def generate_with_simulated_annealing(instance, num_configs,
 def generate_with_real_time_greedy(instance, num_configs, step_time=1.0):
     """Interface pour RealTimeGreedyGenerator."""
     gen = RealTimeGreedyGenerator(step_time=step_time)
+    return gen.generate(instance, num_configs)
+
+def generate_with_adaptive_bitmask(instance, num_configs):
+    """Interface pour AdaptiveBitmaskGreedyGenerator."""
+    gen = AdaptiveBitmaskGreedyGenerator()
     return gen.generate(instance, num_configs)
