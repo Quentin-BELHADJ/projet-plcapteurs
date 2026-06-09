@@ -19,12 +19,16 @@ Usage :
 import sys
 import time
 import os
+import csv
+from datetime import datetime
 from data_manager import SensorNetworkInstance
 from heuristic import generate_elementary_configurations
 from heuristic_advanced import (
     generate_with_random_pruning,
     generate_with_dual_guidance,
     generate_with_column_generation,
+    generate_with_simulated_annealing,
+    generate_with_real_time_greedy,
 )
 from lp_solver import solve
 
@@ -68,6 +72,10 @@ def run_method(instance, method_name, num_configs):
         configs, cg_history, _ = generate_with_column_generation(
             instance, num_configs, pricing_mode="auto"
         )
+    elif method_name == "simulated_annealing":
+        configs = generate_with_simulated_annealing(instance, num_configs)
+    elif method_name == "real_time_greedy":
+        configs = generate_with_real_time_greedy(instance, num_configs)
 
     gen_time = time.time() - t0
 
@@ -90,6 +98,8 @@ ALL_METHODS = [
     ("greedy_hybrid",     "Greedy Hybride"),
     ("random_pruning",    "Random Pruning"),
     ("column_generation", "Column Generation"),
+    ("simulated_annealing", "Simulated Annealing"),
+    ("real_time_greedy",  "Real-Time Greedy"),
 ]
 
 VALID_IDS = {m[0] for m in ALL_METHODS}
@@ -126,6 +136,13 @@ def parse_args():
 
 def main():
     methods, num_configs = parse_args()
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    algo_names = "_".join(m[0] for m in methods)
+    if len(algo_names) > 30:
+        algo_names = "multiple_algos"
+    csv_filename = f"results_{timestamp}_{algo_names}_{num_configs}configs.csv"
+    csv_data = []
 
     print(f"\n{'='*90}")
     print(f"  BENCHMARK DES MÉTHODES DE GÉNÉRATION  (num_configs={num_configs})")
@@ -167,12 +184,29 @@ def main():
             print(f"  │  {method_label:<22} {n_configs:>7} {obj:>10.4f} {vs_prof:>9} {total_time:>6.2f}s  {marker}")
             results.append((method_label, obj, n_configs, total_time))
 
+            csv_data.append({
+                "Date": datetime.now().strftime("%Y-%m-%d"),
+                "Heure": datetime.now().strftime("%H:%M:%S"),
+                "Instance": filename,
+                "Algorithme": method_id,
+                "Nb_Solutions_Explorees": n_configs,
+                "Score_Objectif": obj,
+                "Temps_Execution_s": round(total_time, 2)
+            })
+
             # Afficher la convergence de la génération de colonnes
             if cg_history and len(cg_history) > 1:
                 print(f"  │    └─ CG : {len(cg_history)} itérations, "
                       f"obj initial={cg_history[0][1]:.2f} → final≈{cg_history[-1][1]:.2f}")
 
         print(f"  └─ Meilleur : {best_obj:.4f}")
+
+    if csv_data:
+        with open(csv_filename, mode='w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=csv_data[0].keys())
+            writer.writeheader()
+            writer.writerows(csv_data)
+        print(f"\n  [+] Fichier de résultats généré : {csv_filename}")
 
     print(f"\n{'='*90}")
     print(f"  Benchmark terminé.")

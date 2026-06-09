@@ -1,0 +1,6 @@
+Date,Heure,Instance,Algorithme,Nb_Solutions_Explorees,Score_Objectif,Temps_Execution_s
+2026-06-09,14:28:31,fichier-exemple.txt,real_time_greedy,4,8.5,0.04
+2026-06-09,14:28:31,moyen_test_2.txt,real_time_greedy,50,104.0,0.01
+2026-06-09,14:28:31,moyen_test_3.txt,real_time_greedy,19,395.0,0.08
+2026-06-09,14:28:31,gros_test_1.txt,real_time_greedy,50,1272.0,0.08
+2026-06-09,14:28:33,maxi_test_1.txt,real_time_greedy,50,1799.0,1.5

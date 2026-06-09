@@ -555,6 +555,202 @@ def _bootstrap(instance, configs_set, target, max_attempts_factor=100):
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  4. SimulatedAnnealingGenerator
+# ═══════════════════════════════════════════════════════════════════
+
+class SimulatedAnnealingGenerator:
+    """Génération par Recuit Simulé.
+    
+    Améliore itérativement des configurations élémentaires en tentant
+    des échanges de capteurs. La fonction de coût favorise les capteurs
+    avec une grande durée de vie et pénalise les capteurs déjà beaucoup
+    utilisés dans les configurations précédentes pour forcer la diversité.
+    """
+
+    def __init__(self, initial_temp=10.0, cooling_rate=0.95, min_temp=0.1, 
+                 steps_per_temp=10, penalty_weight=1.0):
+        self.initial_temp = initial_temp
+        self.cooling_rate = cooling_rate
+        self.min_temp = min_temp
+        self.steps_per_temp = steps_per_temp
+        self.penalty_weight = penalty_weight
+
+    def _cost(self, instance, config, usage_counts):
+        cost = 0.0
+        for s in config:
+            lifetime = max(instance.lifetimes[s], 1e-6)
+            penalty = usage_counts.get(s, 0) * self.penalty_weight
+            cost += (1.0 / lifetime) + penalty
+        return cost
+
+    def _get_neighbor(self, instance, config):
+        """Génère un voisin en retirant un capteur et en réparant."""
+        if len(config) <= 1:
+            return config
+            
+        sensors = list(config)
+        # Retirer un capteur aléatoire
+        dropped = random.choice(sensors)
+        sensors.remove(dropped)
+        
+        # Identifier les zones orphelines
+        covered = set()
+        for s in sensors:
+            covered.update(instance.get_zones_covered_by(s))
+            
+        uncovered = set(range(instance.num_zones)) - covered
+        
+        # Réparer gloutonnement
+        available = list(set(range(instance.num_sensors)) - set(sensors) - {dropped})
+        random.shuffle(available)
+        
+        current = list(sensors)
+        for s in available:
+            if not uncovered:
+                break
+            new_zones = instance.get_zones_covered_by(s) & uncovered
+            if new_zones:
+                uncovered -= new_zones
+                current.append(s)
+                
+        if uncovered:
+            # Si on n'arrive pas à réparer (très rare), on retourne l'original
+            return config
+            
+        return _reduce_to_elementary(instance, set(current), shuffle=True)
+
+    def generate(self, instance, num_configs):
+        configs = set()
+        usage_counts = {}
+        
+        # Initialisation rapide avec quelques configs aléatoires
+        _bootstrap(instance, configs, target=min(5, num_configs))
+        for c in configs:
+            for s in c:
+                usage_counts[s] = usage_counts.get(s, 0) + 1
+                
+        attempts = 0
+        max_attempts = num_configs * 50
+        
+        while len(configs) < num_configs and attempts < max_attempts:
+            attempts += 1
+            
+            # Prendre une configuration de départ (aléatoire parmi celles existantes ou nouvelle)
+            if configs and random.random() < 0.5:
+                current_config = random.choice(list(configs))
+            else:
+                tmp_set = set()
+                _bootstrap(instance, tmp_set, target=1)
+                if not tmp_set:
+                    continue
+                current_config = list(tmp_set)[0]
+                
+            current_cost = self._cost(instance, current_config, usage_counts)
+            best_config = current_config
+            best_cost = current_cost
+            
+            temp = self.initial_temp
+            
+            while temp > self.min_temp:
+                for _ in range(self.steps_per_temp):
+                    neighbor = self._get_neighbor(instance, best_config)
+                    neighbor_cost = self._cost(instance, neighbor, usage_counts)
+                    
+                    delta = neighbor_cost - current_cost
+                    
+                    if delta < 0 or random.random() < math.exp(-delta / temp):
+                        current_config = neighbor
+                        current_cost = neighbor_cost
+                        
+                        if current_cost < best_cost:
+                            best_config = current_config
+                            best_cost = current_cost
+                            
+                temp *= self.cooling_rate
+                
+            if best_config not in configs:
+                configs.add(best_config)
+                for s in best_config:
+                    usage_counts[s] = usage_counts.get(s, 0) + 1
+
+        # Fallback si on manque de configs
+        _bootstrap(instance, configs, target=num_configs)
+        
+        return [tuple(sorted(c)) for c in configs]
+
+# ═══════════════════════════════════════════════════════════════════
+#  5. RealTimeGreedyGenerator
+# ═══════════════════════════════════════════════════════════════════
+
+class RealTimeGreedyGenerator:
+    """Glouton Temps-Réel (Énergie Résiduelle).
+    
+    Génère des configurations en simulant l'usure des batteries au fur
+    et à mesure. Les capteurs dont l'énergie tombe à zéro ne peuvent plus
+    être utilisés, ce qui force naturellement la diversité.
+    """
+
+    def __init__(self, step_time=1.0):
+        self.step_time = step_time
+
+    def generate(self, instance, num_configs):
+        configs = set()
+        
+        # Copie locale de l'énergie de chaque capteur
+        residual_energy = list(instance.lifetimes)
+        
+        attempts = 0
+        max_attempts = num_configs * 50
+        
+        while len(configs) < num_configs and attempts < max_attempts:
+            attempts += 1
+            
+            # Filtre des capteurs encore vivants
+            available_sensors = [s for s in range(instance.num_sensors) if residual_energy[s] > 0]
+            
+            # Vérifier si les capteurs vivants couvrent encore toutes les zones
+            covered_zones = set()
+            for s in available_sensors:
+                covered_zones.update(instance.get_zones_covered_by(s))
+                
+            if len(covered_zones) < instance.num_zones:
+                # Reset des batteries pour pouvoir générer d'autres configurations
+                residual_energy = list(instance.lifetimes)
+                available_sensors = list(range(instance.num_sensors))
+                
+            # Random Greedy sur les capteurs vivants
+            random.shuffle(available_sensors)
+            
+            uncovered = set(range(instance.num_zones))
+            current = []
+            
+            for s in available_sensors:
+                new = instance.get_zones_covered_by(s) & uncovered
+                if new:
+                    uncovered -= new
+                    current.append(s)
+                if not uncovered:
+                    break
+                    
+            if uncovered:
+                continue
+                
+            # Réduire vers l'élémentaire
+            elementary = _reduce_to_elementary(instance, set(current), shuffle=True)
+            
+            # Déduire l'énergie
+            for s in elementary:
+                residual_energy[s] -= self.step_time
+                
+            configs.add(elementary)
+
+        # Fallback si on n'a pas atteint le quota
+        if len(configs) < num_configs:
+            _bootstrap(instance, configs, target=num_configs)
+            
+        return [tuple(sorted(c)) for c in configs]
+
+# ═══════════════════════════════════════════════════════════════════
 #  Interface publique
 # ═══════════════════════════════════════════════════════════════════
 
@@ -585,3 +781,18 @@ def generate_with_column_generation(instance, num_configs,
     """
     gen = ColumnGeneration(max_iter=max_iter, pricing_mode=pricing_mode)
     return gen.generate(instance, num_configs, seed_configs=seed_configs)
+
+
+def generate_with_simulated_annealing(instance, num_configs,
+                                      initial_temp=10.0, cooling_rate=0.95,
+                                      min_temp=0.1, steps_per_temp=10, penalty_weight=1.0):
+    """Interface pour SimulatedAnnealingGenerator."""
+    gen = SimulatedAnnealingGenerator(initial_temp=initial_temp, cooling_rate=cooling_rate,
+                                      min_temp=min_temp, steps_per_temp=steps_per_temp,
+                                      penalty_weight=penalty_weight)
+    return gen.generate(instance, num_configs)
+
+def generate_with_real_time_greedy(instance, num_configs, step_time=1.0):
+    """Interface pour RealTimeGreedyGenerator."""
+    gen = RealTimeGreedyGenerator(step_time=step_time)
+    return gen.generate(instance, num_configs)
